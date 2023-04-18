@@ -1,0 +1,166 @@
+diff --git a/src/main.js b/src/main.js
+index c492b71..695b5aa 100644
+--- a/src/main.js
++++ b/src/main.js
+@@ -16,6 +16,7 @@ Vue.config.productionTip = false
+ Promise.all([
+ 	store.dispatch('prefs/loadState'),
+ 	store.dispatch('auth/initializeAuth'),
++	store.dispatch('plHistory/resolvePlaylistID'),
+ 	i18nInitialized
+ ]).then(() => {
+ 	new Vue({
+diff --git a/src/routes/WatchVideo.vue b/src/routes/WatchVideo.vue
+index b08993e..1d24636 100644
+--- a/src/routes/WatchVideo.vue
++++ b/src/routes/WatchVideo.vue
+@@ -386,14 +386,14 @@ export default {
+ 					.replaceAll('https://www.youtube.com', '')
+ 					.replaceAll('\n', '<br>')
+ 			)
+-			this.dbID = await addWatchedVideo(video)
++			this.dbID = await addWatchedVideo(this.$store, video)
+ 		},
+ 
+ 		onTimeUpdate: debounce(function onTimeUpdate (e) {
+ 			if (this.dbID == null || !this.$refs.player) {
+ 				return
+ 			}
+-			return updateWatchedVideoProgress(this.dbID, this.$refs.player.getCurrentTime(), this.video.duration)
++			return updateWatchedVideoProgress(this.$store, this.dbID, this.$refs.player.getCurrentTime(), this.video.duration)
+ 		}, 500)
+ 	},
+ 	computed: {
+diff --git a/src/store/index.js b/src/store/index.js
+index ab79f8b..ddcabff 100644
+--- a/src/store/index.js
++++ b/src/store/index.js
+@@ -3,6 +3,7 @@ import Vuex from 'vuex'
+ 
+ import { PrefsStore, initializePrefEvents } from '@/store/prefs-store'
+ import { AuthenticationStore, initializeAuthEvents } from '@/store/authentication-store'
++import { WatchedVideosPlaylist } from '@/store/watched-videos-playlist'
+ import { i18nStore } from '@/store/i18n-store'
+ 
+ Vue.use(Vuex)
+@@ -11,7 +12,8 @@ const store = new Vuex.Store({
+ 	modules: {
+ 		prefs: PrefsStore,
+ 		auth: AuthenticationStore,
+-		i18n: i18nStore
++		i18n: i18nStore,
++		plHistory: WatchedVideosPlaylist
+ 	}
+ })
+ 
+diff --git a/src/store/watched-videos-db.js b/src/store/watched-videos-db.js
+index 7362970..54c7daa 100644
+--- a/src/store/watched-videos-db.js
++++ b/src/store/watched-videos-db.js
+@@ -6,7 +6,8 @@ PMDB.version(3).stores({
+ 	watchedVideos: '++id,videoId,progressPcnt,timestamp'
+ })
+ 
+-export async function addWatchedVideo (videoObj) {
++export async function addWatchedVideo (store, videoObj) {
++	await store.dispatch('plHistory/addVideo', videoObj.videoId)
+ 	return PMDB.watchedVideos.add({
+ 		videoId: videoObj.videoId,
+ 		video: videoObj,
+@@ -16,7 +17,7 @@ export async function addWatchedVideo (videoObj) {
+ 	})
+ }
+ 
+-export function updateWatchedVideoProgress (videoID, prog, dur) {
++export function updateWatchedVideoProgress (_, videoID, prog, dur) {
+ 	return PMDB.watchedVideos.update(videoID, {
+ 		progress: prog,
+ 		progressPcnt: Math.min((prog / dur) * 100, 100)
+diff --git a/src/store/watched-videos-playlist.js b/src/store/watched-videos-playlist.js
+new file mode 100644
+index 0000000..f9bd783
+--- /dev/null
++++ b/src/store/watched-videos-playlist.js
+@@ -0,0 +1,68 @@
++const WATCHED_HISTORY_PLAYLIST_UNIQID = '5d0615c7-b6a7-4bd5-8450-fa740cd92df7'
++
++export const WatchedVideosPlaylist = {
++	namespaced: true,
++	state: () => ({
++		playlistID: ''
++	}),
++	mutations: {
++		replaceID (state, nextID) {
++			state.playlistID = nextID
++		}
++	},
++	actions: {
++		async resolvePlaylistID ({ dispatch, commit }) {
++			let playlists
++			try {
++				playlists = await dispatch('auth/makeRequest', {
++					method: 'GET',
++					path: '/user/playlists'
++				}, {
++					root: true
++				})
++			} catch (e) {
++				return
++			}
++			let found = false; let pl
++			for (const _pl of playlists) {
++				const sdp = _pl.shortDescription ?? ''
++				if (sdp.includes(WATCHED_HISTORY_PLAYLIST_UNIQID) || _pl.name === 'Watch History') {
++					found = true
++					pl = _pl
++					break
++				}
++			}
++			if (!found) {
++				const { playlistId } = await dispatch('auth/makeRequest', {
++					method: 'POST',
++					path: '/user/playlists/create',
++					data: {
++						name: 'Watch History',
++						shortDescription: WATCHED_HISTORY_PLAYLIST_UNIQID
++					}
++				}, {
++					root: true
++				})
++				pl = {
++					id: playlistId
++				}
++			}
++			commit('replaceID', pl.id)
++		},
++		async addVideo ({ state, dispatch }, videoID) {
++			if (state.playlistID === '') {
++				return
++			}
++			await dispatch('auth/makeRequest', {
++				method: 'POST',
++				path: '/user/playlists/add',
++				data: {
++					playlistId: state.playlistID,
++					videoId: videoID
++				}
++			}, {
++				root: true
++			})
++		}
++	}
++}
+diff --git a/src/translations/en.json b/src/translations/en.json
+index d292c42..23bd1bd 100644
+--- a/src/translations/en.json
++++ b/src/translations/en.json
+@@ -24,7 +24,8 @@
+         "remove_video": "Remove this video from the playlist",
+         "delete_self": "Delete",
+         "rename_self": "Rename",
+-        "new_name_msg": "What do you want the new name to be?"
++        "new_name_msg": "What do you want the new name to be?",
++        "watched_history_playlist_name": "Watched History"
+     },
+     "misc": {
+         "searchBarLabel": "What are you looking for?",

@@ -7,6 +7,10 @@ RUN --mount=type=cache,target=/var/cache/apk \
 RUN git clone --depth 1 https://github.com/mmjee/Piped-Material.git .
 ARG INSTANCE_URL
 ENV VUE_APP_PIPED_URL=${INSTANCE_URL}
+
+COPY ./22.diff .
+RUN git apply 22.diff
+
 RUN --mount=type=cache,target=/root/.cache/yarn \
     --mount=type=cache,target=/app/node_modules \
     yarn install --prefer-offline --network-timeout 1000000000 && \

@@ -1,4 +1,4 @@
-FROM node:lts-alpine AS build
+FROM node:hydrogen-alpine AS build
 
 WORKDIR /app/
 

@@ -13,10 +13,10 @@ RUN git clone --depth 1 --branch $PM_BRANCH https://github.com/mmjee/Piped-Mater
 ENV VUE_APP_PIPED_URL=${INSTANCE_URL}
 ENV VUE_APP_EDS_URL=${EDS_URL}
 
-RUN --mount=type=cache,target=/root/.cache/yarn \
+RUN --mount=type=cache,target=/root/.cache/pnpm \
     --mount=type=cache,target=/app/node_modules \
-    yarn install --prefer-offline --network-timeout 1000000000 && \
-    yarn build
+    pnpm install --prefer-offline --fetch-timeout 1000000000 && \
+    pnpm build
 
 FROM nginx:alpine
 

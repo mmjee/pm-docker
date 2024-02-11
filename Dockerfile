@@ -1,4 +1,4 @@
-FROM node:iron-alpine AS build
+FROM node:gallium-alpine AS build
 
 WORKDIR /app/
 
